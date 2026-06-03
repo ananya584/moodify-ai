@@ -1,11 +1,13 @@
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 
 const moodRoutes = require('./routes/moodRoutes');
 
-dotenv.config();
-
+console.log("SERVER Gemini:", process.env.GEMINI_API_KEY);
+console.log("SERVER Spotify:", process.env.SPOTIFY_CLIENT_ID);
 const app = express();
 const PORT = process.env.PORT || 5000;
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173').split(',');

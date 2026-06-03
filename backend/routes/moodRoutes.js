@@ -1,8 +1,11 @@
 const express = require('express');
-const { analyzeMood } = require('../controllers/moodController');
+const moodController = require('../controllers/moodController');
 
 const router = express.Router();
 
-router.post('/analyze', analyzeMood);
+// POST /api/mood/analyze
+// Body: { mood: string, preference: string }
+// Response: { detectedMood, subMood, insight, genres, recommendations }
+router.post('/analyze', moodController.analyzeMood);
 
 module.exports = router;

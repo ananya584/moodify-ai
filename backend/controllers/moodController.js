@@ -1,605 +1,184 @@
-const axios = require('axios');
+const geminiService = require('../services/geminiService');
+const spotifyService = require('../services/spotifyService');
 
-// ==========================
-// MOOD -> GENRES MAP
-// ==========================
+/** @type {Map<string, { pool: object[], offset: number }>} */
+const rotationStore = new Map();
 
-const moodGenreMap = {
-  happy: [
-    'Happy Hits',
-    'Feel Good Friday',
-    'Bollywood Party',
-    'Punjabi Party',
-    'Dance Hits',
-    'Mood Booster',
-    'Good Vibes',
-    'Top Hits India'
-  ],
+function rotationKey(mood, preference, detectedMood, subMood) {
+  return [
+    mood.trim().toLowerCase(),
+    preference.trim().toLowerCase(),
+    detectedMood,
+    subMood || '',
+  ].join('|');
+}
 
-  sad: [
-    'Heartbreak Hits',
-    'Sad Songs',
-    'Bollywood Sad Songs',
-    'Broken Heart',
-    'Acoustic Chill',
-    'Emotional Songs',
-    'Alone Again',
-    'Late Night Sad'
-  ],
+function generateSearchQueries(mood, subMood, preference, genres = [], musicVibe = '') {
+  const queries = [];
+  const pref = preference.trim();
 
-  calm: [
-    'LoFi Beats',
-    'Peaceful Piano',
-    'Chill Hits',
-    'Relax & Unwind',
-    'Evening Acoustic',
-    'Deep Focus',
-    'Bollywood Chill',
-    'Coffee Beats'
-  ],
-
-  energetic: [
-    'Workout Hits',
-    'Gym Motivation',
-    'Punjabi Workout',
-    'Beast Mode',
-    'EDM Hits',
-    'Power Workout',
-    'Running Music',
-    'Dance Energy'
-  ],
-
-  romantic: [
-    'Love Songs',
-    'Romantic Hindi',
-    'Bollywood Romance',
-    'Date Night',
-    'Love Pop',
-    'Couple Vibes',
-    'Romantic Acoustic',
-    'Punjabi Love'
-  ],
-
-  focused: [
-    'Deep Focus',
-    'Coding Mode',
-    'Study Beats',
-    'Brain Food',
-    'Instrumental Focus',
-    'LoFi Study',
-    'Concentration Music',
-    'Productivity Playlist'
-  ],
-
-  tired: [
-    'Relax & Recharge',
-    'Healing Music',
-    'Soft Piano',
-    'Chill Evening',
-    'Calm Acoustic',
-    'LoFi Sleep',
-    'Slow Vibes',
-    'Recovery Mode'
-  ],
-
-  bored: [
-    'Viral Hits',
-    'Trending Now',
-    'Top Global Hits',
-    'Bollywood Trending',
-    'Throwback Hits',
-    'Party Mix',
-    'Discover Weekly',
-    'Fresh Finds'
-  ],
-
-  angry: [
-    'Rock Classics',
-    'Metal Essentials',
-    'Rage Beats',
-    'Hard Workout',
-    'Phonk',
-    'Trap Nation',
-    'Beast Mode',
-    'Aggressive Energy'
-  ],
-
-  sleepy: [
-    'Sleep',
-    'Deep Sleep',
-    'Night Rain',
-    'Sleep Piano',
-    'Meditation Sleep',
-    'Calm Ambient',
-    'Bedtime Beats',
-    'Sleep Sounds'
-  ],
-
-  spiritual: [
-    'Hanuman Chalisa',
-    'Radha Krishna Bhajan',
-    'ISKCON Kirtan',
-    'Morning Bhakti',
-    'Shiv Bhajan',
-    'Meditation Mantras',
-    'Hare Krishna',
-    'Jai Shree Ram',
-    'Bhakti Sagar',
-    'Devotional Songs'
-  ]
-};
-
-// ==========================
-// MOOD KEYWORDS
-// ==========================
-
-const moodKeywords = {
-  happy: [
-    'happy',
-    'joy',
-    'excited',
-    'cheerful',
-    'great',
-    'fun',
-    'elated',
-    'dance',
-    'celebrate',
-    'party',
-    'club',
-    'clubbing',
-    'club music',
-    'club playlist',
-    'club music',
-    'club mood',
-    'club feeling',
-    'club emotions',
-    'club moments',
-    'festive',
-    'happy hour',
-    'happy vibes',
-    'happy songs',
-    'happy playlist',
-    'happy music',
-    'happy mood',
-    'happy feeling',
-    'happy emotions',
-    'happy moments',
-    'happy memories',
-    'happy thoughts',
-    'happy day',
-    'happy life'
-  ],
-
-  sad: [
-    'sad',
-    'down',
-    'lonely',
-    'cry',
-    'depressed',
-    'upset',
-    'miserable',
-    'heartbroken',
-    'broken heart',
-    'heartache',
-    'sorrow',
-    'grief',
-    'loss',
-    'despair',
-    'sadness',
-    'dejection',
-    'melancholy',
-    'heartbreak',
-    'sad songs',
-    'emotional',
-    'emotional songs',
-    'emotional playlist',
-    'emotional music',
-    'emotional mood',
-    'emotional feeling',
-    'emotional emotions',
-    'emotional moments',
-    'emotional memories',
-    'emotional thoughts',
-    'emotional day',
-    'emotional life'
-  ],
-
-  calm: [
-    'calm',
-    'relaxed',
-    'peaceful',
-    'soft',
-    'chill',
-    'serene',
-    'lofi',
-    'tired',
-    'relax',
-    'relaxing',
-    'exhausted'
-  ],
-
-  energetic: [
-    'energetic',
-    'hype',
-    'pumped',
-    'power',
-    'workout',
-    'active',
-    'gym',
-    'boost',
-    'dance',
-    'exercise',
-    'workout',
-    'gym',
-    'fitness',
-    'sports',
-    'athletics',
-    'dance party',
-    'dance workout',
-    'dance music',
-    'dance playlist',
-    'dance music',
-  ],
-
-  romantic: [
-    'romantic',
-    'love',
-    'date',
-    'heart',
-    'affection',
-    'crush',
-    'romantic songs',
-    'romantic playlist',
-    'romantic music',
-    'romantic mood',
-    'romantic feeling',
-    'romantic emotions',
-    'romantic moments',
-    'romantic memories',
-    'romantic thoughts',
-    'romantic day',
-    'romantic life'
-  ],
-
-  angry: [
-    'angry',
-    'mad',
-    'frustrated',
-    'furious',
-    'rage',
-    'annoyed'
-  ],
-
-  focused: [
-    'focus',
-    'study',
-    'coding',
-    'work',
-    'productive',
-    'concentrate',
-    'study music'
-  ],
-
-  tired: [
-    'tired',
-    'exhausted',
-    'drained',
-    'burnt out',
-    'fatigue',
-    'low energy'
-  ],
-
-  bored: [
-    'bored',
-    'boring',
-    'dull',
-    'blank',
-    'nothing to do',
-    'uninterested'
-  ],
-
-  sleepy: [
-    'sleepy',
-    'sleep',
-    'drowsy',
-    'sleepy eyes',
-    'night'
-  ],
-
-  spiritual: [
-    'spiritual',
-    'bhajan',
-    'god',
-    'krishna',
-    'radha',
-    'mahadev',
-    'shiv',
-    'hanuman',
-    'ram',
-    'mandir',
-    'bhakti',
-    'meditation',
-    'peace',
-    'devotional',
-    'hare krishna',
-    'jai shree ram',
-    'chalisa',
-    'kirtan'
-  ]
-};
-
-// ==========================
-// DETECT MOOD
-// ==========================
-
-const detectMood = (text) => {
-  const normalized = text.toLowerCase();
-
-  let selectedMood = 'calm';
-  let maxScore = 0;
-
-  for (const [mood, keywords] of Object.entries(moodKeywords)) {
-
-    const score = keywords.reduce((count, keyword) => {
-      return count + (normalized.includes(keyword) ? 1 : 0);
-    }, 0);
-
-    if (score > maxScore) {
-      selectedMood = mood;
-      maxScore = score;
-    }
+  if (musicVibe) {
+    queries.push(`${musicVibe} ${pref}`);
+    queries.push(`${musicVibe} playlist`);
   }
 
-  return selectedMood;
-};
+  queries.push(`${mood} ${pref} playlist`);
+  queries.push(`${pref} ${mood}`);
 
-// ==========================
-// RANDOM GENRES
-// ==========================
-
-const getRandomGenres = (mood, count = 4) => {
-
-  const genres = moodGenreMap[mood] || moodGenreMap.calm;
-
-  return [...genres]
-    .sort(() => Math.random() - 0.5)
-    .slice(0, count);
-};
-
-// ==========================
-// SPOTIFY ACCESS TOKEN
-// ==========================
-
-const getSpotifyAccessToken = async () => {
-
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      'Spotify credentials are missing in environment variables.'
-    );
+  if (subMood) {
+    queries.push(`${mood} ${subMood} ${pref}`);
+    queries.push(`${subMood} ${pref} music`);
+    queries.push(`comforting ${subMood} ${pref}`);
   }
 
-  const authHeader = Buffer.from(
-    `${clientId}:${clientSecret}`
-  ).toString('base64');
+  const moodDescriptors = {
+    sad: ['heartbreak', 'emotional', 'melancholy'],
+    happy: ['feel good', 'upbeat', 'party'],
+    calm: ['chill', 'relaxing', 'peaceful'],
+    energetic: ['workout', 'hype', 'dance'],
+    focused: ['study', 'concentration', 'lo-fi'],
+    romantic: ['love songs', 'romance'],
+    angry: ['intense', 'rage'],
+    anxious: ['soothing', 'calm'],
+    sleepy: ['sleep', 'bedtime', 'night'],
+  };
 
-  const tokenResponse = await axios.post(
-    'https://accounts.spotify.com/api/token',
-    'grant_type=client_credentials',
-    {
-      headers: {
-        Authorization: `Basic ${authHeader}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    }
-  );
+  const descriptors = moodDescriptors[mood.toLowerCase()] || ['mood'];
+  for (const descriptor of descriptors.slice(0, 2)) {
+    queries.push(`${pref} ${descriptor}`);
+  }
 
-  return tokenResponse.data.access_token;
-};
+  for (const genre of genres.slice(0, 2)) {
+    queries.push(`${pref} ${genre} playlist`);
+  }
 
-// ==========================
-// FETCH TRACKS FOR ONE GENRE
-// ==========================
+  queries.push(`${mood} ${pref} hits`);
+  queries.push(`best ${pref} ${mood}`);
 
-const fetchPlaylistsByGenre = async (
-  token,
-  genre,
-  limit = 5
-) => {
+  return [...new Set(queries)];
+}
+
+function takeNextBatch(state, batchSize = 5) {
+  const { pool, offset } = state;
+  if (offset >= pool.length) {
+    return { batch: [], newOffset: offset, exhausted: true };
+  }
+
+  const batch = pool.slice(offset, offset + batchSize);
+  return {
+    batch,
+    newOffset: offset + batch.length,
+    exhausted: offset + batchSize >= pool.length,
+  };
+}
+
+exports.analyzeMood = async (req, res) => {
   try {
-    const response = await axios.get(
-      'https://api.spotify.com/v1/search',
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        params: {
-          q: genre,
-          type: 'playlist',
-          market: 'IN',
-          limit,
-        },
-      }
-    );
+    const { mood, preference } = req.body;
 
-    return response.data.playlists?.items || [];
-  } catch (error) {
-    console.error(
-      `Error fetching playlist ${genre}:`,
-      error.response?.data || error.message
-    );
-
-    return [];
-  }
-};
-
-// ==========================
-// SHUFFLE ARRAY
-// ==========================
-
-const shuffleArray = (array) => {
-
-  return [...array].sort(
-    () => Math.random() - 0.5
-  );
-};
-
-// ==========================
-// FETCH RECOMMENDATIONS
-// ==========================
-
-const fetchSpotifyRecommendations = async (
-  token,
-  mood
-) => {
-
-  const selectedGenres = getRandomGenres(mood, 4);
-
-  console.log('Selected Genres:', selectedGenres);
-
-  let allPlaylists = [];
-
-  for (const genre of selectedGenres) {
-
-    const playlists =
-      await fetchPlaylistsByGenre(
-        token,
-        genre,
-        5
-      );
-
-    allPlaylists = [
-      ...allPlaylists,
-      ...playlists,
-    ];
-  }
-
-  const validPlaylists = allPlaylists.filter(
-    (playlist) =>
-      playlist &&
-      playlist.id &&
-      playlist.name
-  );
-  
-  const uniquePlaylists = Array.from(
-    new Map(
-      validPlaylists.map((playlist) => [
-        playlist.id,
-        playlist,
-      ])
-    ).values()
-  );
-
-  const shuffled =
-    shuffleArray(uniquePlaylists);
-
-  return shuffled
-    .slice(0, 12)
-    .map((playlist) => ({
-      id: playlist.id,
-
-      name: playlist.name,
-
-      description:
-        playlist.description ||
-        'Spotify Playlist',
-
-      image:
-        playlist.images?.[0]?.url ||
-        null,
-
-      spotifyUrl:
-        playlist.external_urls?.spotify ||
-        null,
-
-      owner:
-        playlist.owner?.display_name ||
-        'Spotify',
-    }));
-};
-
-// ==========================
-// MAIN CONTROLLER
-// ==========================
-
-const analyzeMood = async (req, res) => {
-
-  try {
-
-    const { mood } = req.body;
-
-    // Validation
-    if (
-      !mood ||
-      typeof mood !== 'string' ||
-      !mood.trim()
-    ) {
-
+    if (!mood?.trim() || !preference?.trim()) {
       return res.status(400).json({
-        message: 'Mood text is required',
+        message: 'Both mood and music preference are required.',
       });
     }
 
-    // Clean input
-    const normalizedMoodText = mood.trim();
+    const trimmedMood = mood.trim();
+    const trimmedPreference = preference.trim();
 
-    // Detect mood
-    const detectedMood = detectMood(
-      normalizedMoodText
-    );
+    const moodAnalysis = await geminiService.analyzeMood(trimmedMood);
 
-    console.log(
-      'Detected Mood:',
-      detectedMood
-    );
+    if (!moodAnalysis?.detectedMood) {
+      return res.status(500).json({ message: 'Failed to analyze mood. Please try again.' });
+    }
 
-    // Spotify token
-    const token =
-      await getSpotifyAccessToken();
+    const { detectedMood, subMood, insight, genres, musicVibe } = moodAnalysis;
 
-    // Recommendations
-    const recommendations =
-      await fetchSpotifyRecommendations(
-        token,
-        detectedMood
+    const key = rotationKey(trimmedMood, trimmedPreference, detectedMood, subMood);
+    let state = rotationStore.get(key);
+
+    const needsFreshPool =
+      !state ||
+      state.pool.length < 5 ||
+      state.offset >= state.pool.length;
+
+    if (needsFreshPool) {
+      const searchQueries = generateSearchQueries(
+        detectedMood,
+        subMood,
+        trimmedPreference,
+        genres,
+        musicVibe,
       );
 
-    // Response
-    return res.status(200).json({
+      const newPool = await spotifyService.buildPlaylistPool(searchQueries, 35);
 
-      message:
-        'Mood analyzed successfully',
+      if (state?.pool?.length) {
+        const seen = new Set(state.pool.map((p) => p.id));
+        const merged = [...state.pool];
+        for (const playlist of newPool) {
+          if (!seen.has(playlist.id)) {
+            merged.push(playlist);
+            seen.add(playlist.id);
+          }
+        }
+        state = { pool: merged, offset: state.offset };
+      } else {
+        state = { pool: newPool, offset: 0 };
+      }
 
-      input: normalizedMoodText,
+      if (state.pool.length === 0) {
+        const fallback = await spotifyService.searchPlaylists(
+          `${detectedMood} ${trimmedPreference} playlist`,
+          10,
+        );
+        state.pool = fallback;
+        state.offset = 0;
+      }
+    }
 
+    const { batch, newOffset } = takeNextBatch(state, 5);
+    state.offset = newOffset;
+    rotationStore.set(key, state);
+
+    let recommendations = batch;
+
+    if (recommendations.length < 5) {
+      const extra = await spotifyService.searchPlaylists(
+        `${detectedMood} ${trimmedPreference}`,
+        8,
+      );
+      const seen = new Set(recommendations.map((p) => p.id));
+      for (const playlist of extra) {
+        if (!seen.has(playlist.id) && recommendations.length < 5) {
+          recommendations.push(playlist);
+          seen.add(playlist.id);
+        }
+      }
+    }
+
+    res.json({
       detectedMood,
-
-      totalRecommendations:
-        recommendations.length,
-
-      recommendations,
+      subMood: subMood || null,
+      insight,
+      musicVibe: musicVibe || null,
+      genres,
+      preference: trimmedPreference,
+      recommendations: recommendations.slice(0, 5),
+      hasMore: state.offset < state.pool.length,
     });
-
   } catch (error) {
-
-    console.error(
-      'analyzeMood error:',
-      error.response?.data || error.message
-    );
-
-    return res.status(500).json({
-      message:
-        'Unable to fetch music recommendations right now.',
+    console.error('Error analyzing mood:', error);
+    res.status(500).json({
+      message: error.message || 'Failed to analyze mood',
     });
   }
 };
 
-// ==========================
-// EXPORTS
-// ==========================
+function cleanupRotationStore() {
+  if (rotationStore.size > 80) {
+    const keys = Array.from(rotationStore.keys());
+    keys.slice(0, keys.length - 40).forEach((k) => rotationStore.delete(k));
+  }
+}
 
-module.exports = {
-  analyzeMood,
-};
+setInterval(cleanupRotationStore, 10 * 60 * 1000);
